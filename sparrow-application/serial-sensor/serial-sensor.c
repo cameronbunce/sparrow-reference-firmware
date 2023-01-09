@@ -30,7 +30,7 @@
 // If TRUE we have a device attached that is doing the big number crunching
 #define SERIAL_SENSOR_MODE          false
 
-#define REQUESTED_TEMPLATE          42
+#define REQUESTID_TEMPLATE          42
 
 // This would be better not set at compile time, 
 // but rather set at initialization 
@@ -45,6 +45,8 @@ typedef struct applicationContext {
 } applicationContext;
 
 // Forwards
+static void addSerialNote(applicationContext * ctx, bool immediate);
+static const char * serialStateName(int state);
 static bool registerNotefileTemplate (void);
 
 // Scheduled App One-Time Init
@@ -59,6 +61,14 @@ bool serialsensorInit(void)
 
     // wrangle the serial conection and say hello
     //...
+    // we need to know from the attached device what it will be telling us
+    // we need to know the sensor name(s) and data types
+    // for instance:
+    // ESP32        TSTRINGV for system messages
+    // DS18B20      TFLOAT32
+    // Inference    TSTRINGV
+    // Probably as JSON from the sister device
+
     // Register the app
     schedAppConfig config = {
         .name = "serial-sensor",
@@ -110,6 +120,23 @@ static bool registerNotefileTemplate(void)
     // without needing to have an additional state.
     JAddNumberToObject(req, "id", REQUESTID_TEMPLATE);
 
+    // Create the body
+    J *body = JAddObjectToObject(req, "body");
+    if(body == NULL){
+        JDelete(req);
+        return false;
+    }
+
+    // Fill in the body template with message from sister device
+    // this needs to be determined at init
+    // need to make sure gateway support multiple templates from a single application
+    // otherwise we'll just pretend to be an application for each "type" of response we get 
+    // from the sister device
+    JAddObjectToObject(body, ~serialsensortype, type); 
+
+    // Send request to the gateway
+    noteSendToGatewayAsync(req, true);
+
 }
 
 // Gateway response handler
@@ -125,6 +152,7 @@ void serialsensorResponse(int appID, J *rsp, void *appContext)
     }
 
     // Identify specific response(s)
+    // We probably need to log the appid to map templates to sensor types
     switch (JGetInt(rsp, "id")) {
     case REQUESTID_TEMPLATE:
         ctx->templateRegistered = true;
@@ -134,4 +162,35 @@ void serialsensorResponse(int appID, J *rsp, void *appContext)
         APP_PRINTF("Serial Sensor: received unexpected response\r\n");
     }
 
+}
+
+static void addSerialNote(applicationContext * ctx, bool immediate)
+{
+    APP_PRINTF("Serial Sensor: generating note\r\n");
+
+    // Create the request
+    J *req = NoteNewRequest("note.add");
+    if (req == NULL){
+        return;
+    }
+
+    // If Immediate, sync now
+    if(immediate){
+        JAddBoolToObject(req, "sync", true);
+    }
+
+    // Set the target notefile
+    // Ideally this would take a sensor parameter from the sister device
+    JAddStringToObject(req, "file", APPLICATION_NOTEFILE);
+    //JAddStringToObject(req, "file", ~serialstruct.sensor);
+
+    // Create the Body
+    J *body = JAddObjectToObject(req, "body");
+    if body == NULL){
+        JDelete(req);
+        return;
+    }
+
+    // Fill in the body
+    JAddNumberToObject(body, )
 }
