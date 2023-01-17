@@ -97,7 +97,7 @@ static bool registerNotefileTemplate(void)
     
     // Create the request
     J *req = NoteNewRequest("note.template");
-    if (req == NUL) {
+    if (req == NULL) {
         return false;
     }
     
@@ -130,9 +130,9 @@ static bool registerNotefileTemplate(void)
     // Fill in the body template with message from sister device
     // this needs to be determined at init
     // need to make sure gateway support multiple templates from a single application
-    // otherwise we'll just pretend to be an application for each "type" of response we get 
+    // otherwise we'll just pretend to be an application for each "type" of response we get
     // from the sister device
-    JAddObjectToObject(body, ~serialsensortype, type); 
+    JAddObjectToObject(body, ~serialsensortype, type);
 
     // Send request to the gateway
     noteSendToGatewayAsync(req, true);
@@ -142,8 +142,8 @@ static bool registerNotefileTemplate(void)
 // Gateway response handler
 void serialsensorResponse(int appID, J *rsp, void *appContext)
 {
-    APP_PRINTF("Serial Sensor: Entered application callback function: serialsensorResponse\r\n\tappId: %d", appID);  
-    
+    APP_PRINTF("Serial Sensor: Entered application callback function: serialsensorResponse\r\n\tappId: %d", appID);
+
     // See if there's an error
     char *err = JGetString(rsp, "err");
     if (err[0] != '\0') {
@@ -186,11 +186,11 @@ static void addSerialNote(applicationContext * ctx, bool immediate)
 
     // Create the Body
     J *body = JAddObjectToObject(req, "body");
-    if body == NULL){
+    if (body == NULL){
         JDelete(req);
         return;
     }
 
     // Fill in the body
-    JAddNumberToObject(body, )
+    JAddNumberToObject(body, );
 }
