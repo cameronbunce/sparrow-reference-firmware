@@ -9,7 +9,7 @@
 #include "bme/bme.h"
 #include "button/button.h"
 #include "pir/pir.h"
-// #include "serial-sensor/serial-sensor.h"
+#include "serial-sensor/serial-sensor.h"
 
 void schedAppInit (void) {
     // Will not initialize if BME280 is not detected
