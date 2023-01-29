@@ -40,9 +40,12 @@
 #define APPLICATION_NOTEFILE        "*#serial.qo" 
 
 typedef struct applicationContext {
+    /// @brief collection of things we need to remember as an application
     bool templateRegistered;
     bool done;
 } applicationContext;
+UART_HandleTypeDef huart2;
+
 
 // Forwards
 static void addSerialNote(applicationContext * ctx, bool immediate);
@@ -57,6 +60,7 @@ static void MX_USART2_UART_Init(void);
 bool serialsensorInit(void)
 {
     APP_PRINTF("Serial Sensor: Initializing application \r\n");
+    bool result = false;
 
     // Allocate and warm up application context
     applicationContext *ctx = (applicationContext *)malloc(sizeof(applicationContext));
@@ -72,6 +76,9 @@ bool serialsensorInit(void)
     // DS18B20      TFLOAT32
     // Inference    TSTRINGV
     // Probably as JSON from the sister device
+    SystemClock_Config();
+    MX_GPIO_Init();
+    MX_USART2_UART_Init();
 
     // Register the app
     schedAppConfig config = {
@@ -83,7 +90,7 @@ bool serialsensorInit(void)
         .pollFn = serialsensorPoll,
         .responseFn = serialsensorResponse,
         .appContext = ctx,
-    }
+    };
 
     // Regitration was successful if the application identifier
     // is greater than or equal to zero
@@ -148,6 +155,8 @@ void serialsensorResponse(int appID, J *rsp, void *appContext)
 {
     APP_PRINTF("Serial Sensor: Entered application callback function: serialsensorResponse\r\n\tappId: %d", appID);
 
+    applicationContext *ctx = appContext;
+
     // See if there's an error
     char *err = JGetString(rsp, "err");
     if (err[0] != '\0') {
@@ -203,6 +212,8 @@ static void addSerialNote(applicationContext * ctx, bool immediate)
 /**
   * @brief System Clock Configuration
   * @retval None
+  * yea, these are boiler-plate that I copied from STM32IDE to figure out how to do this.
+  * I'm not sure how well they'll work in this application
   */
 void SystemClock_Config(void)
 {
@@ -218,12 +229,11 @@ void SystemClock_Config(void)
   */
   RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
-  RCC_OscInitStruct.HSIDiv = RCC_HSI_DIV1;
   RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
-    Error_Handler();
+    APP_PRINTF("Serial Sensor: Something went wrong configuring the Oscillator.\r\n");
   }
 
   /** Initializes the CPU, AHB and APB buses clocks
@@ -236,7 +246,7 @@ void SystemClock_Config(void)
 
   if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0) != HAL_OK)
   {
-    Error_Handler();
+    APP_PRINTF("Serial Sensor: Something went wrong configuring the clock.\r\n");
   }
 }
 
