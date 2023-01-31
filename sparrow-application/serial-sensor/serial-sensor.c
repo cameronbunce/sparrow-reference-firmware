@@ -5,16 +5,16 @@
 #include "serial-sensor.h"
 
 /*
-| This Application is designed to provide serial extensions to 
+| This Application is designed to provide serial extensions to
 | an offboard processor to speed application testing
 | and to enable Edge Impulse models on higher-horsepower sister microcontrollers
-| 
+|
 | EXPECT THIS TO BREAK - it is not finished
 | EXPECT THIS TO CHANGE - implemtation is not final
-| 
-| Enabling this application will check to see if a device connected on the 
+|
+| Enabling this application will check to see if a device connected on the
 | Tx/Rx pins responds to a "Hello" message
-| 
+|
 | Polling intervals "Poll" the sister microcontroller for the latest sensor reading
 | Responses for which include, at an interval determined by the other device
 | the assessment of the latest data through the Edge Impulse model
@@ -22,6 +22,9 @@
 
 // memory
 #include <malloc.h>
+
+//ST Headers
+#include <main.h>
 
 // Blues headers
 #include <framework.h>
@@ -32,12 +35,12 @@
 
 #define REQUESTID_TEMPLATE          42
 
-// This would be better not set at compile time, 
-// but rather set at initialization 
+// This would be better not set at compile time,
+// but rather set at initialization
 // or in the response from the sister device
-// yielding "*#DS18B20.qo" or "*#edgeimpulse.qo" 
+// yielding "*#DS18B20.qo" or "*#edgeimpulse.qo"
 // as indicated in the response
-#define APPLICATION_NOTEFILE        "*#serial.qo" 
+#define APPLICATION_NOTEFILE        "*#serial.qo"
 
 typedef struct applicationContext {
     /// @brief collection of things we need to remember as an application
@@ -52,9 +55,17 @@ static void addSerialNote(applicationContext * ctx, bool immediate);
 static const char * serialStateName(int state);
 static bool registerNotefileTemplate (void);
 
-void SystemClock_Config(void);
-static void MX_GPIO_Init(void);
-static void MX_USART2_UART_Init(void);
+// Application Activation (on wake)
+bool serialsensorActivate(int appID, void *appContext)
+{
+  APP_PRINTF("Serial Sensor: Application Callback entered: serialsensorActivate\r\n\tappId: %d\r\n", appID);
+  // Load context
+  applicationContext *ctx = appContext;
+  // reset state
+  ctx->done = false;
+
+  return true;
+}
 
 // Scheduled App One-Time Init
 bool serialsensorInit(void)
@@ -69,16 +80,8 @@ bool serialsensorInit(void)
 
     // wrangle the serial conection and say hello
     //...
-    // we need to know from the attached device what it will be telling us
-    // we need to know the sensor name(s) and data types
-    // for instance:
-    // ESP32        TSTRINGV for system messages
-    // DS18B20      TFLOAT32
-    // Inference    TSTRINGV
-    // Probably as JSON from the sister device
-    SystemClock_Config();
-    MX_GPIO_Init();
-    MX_USART2_UART_Init();
+    MX_USART1_Init();
+    MX_USART1_UART_Transmit("Hello\n", 6, 100);
 
     // Register the app
     schedAppConfig config = {
@@ -100,18 +103,26 @@ bool serialsensorInit(void)
 }
 
 // Interrupt handler, maybe
-// void serial-sensorISR()
+void serialsensorISR (int appID, uint16_t pins, void *appContext)
+{
+  UNUSED(appContext);
+  // ensure app is running
+  if(!schedIsActive(appID)) {
+    schedActivateNowFromISR(appID, true, 1);
+  }
+
+}
 
 static bool registerNotefileTemplate(void)
 {
     APP_PRINTF("Serial Sensor: template registration request");
-    
+
     // Create the request
     J *req = NoteNewRequest("note.template");
     if (req == NULL) {
         return false;
     }
-    
+
     // Create the body
     J *body = JCreateObject();
     if (body == NULL) {
@@ -140,10 +151,9 @@ static bool registerNotefileTemplate(void)
 
     // Fill in the body template with message from sister device
     // this needs to be determined at init
-    // need to make sure gateway support multiple templates from a single application
-    // otherwise we'll just pretend to be an application for each "type" of response we get
-    // from the sister device
-    JAddObjectToObject(body, ~serialsensortype, type);
+    // Ideally this should pack a lot of detail into the template, but lets
+    // just get it working
+    JAddStringToObject(body, "Message", TSTRINGV);
 
     // Send request to the gateway
     noteSendToGatewayAsync(req, true);
@@ -191,6 +201,8 @@ static void addSerialNote(applicationContext * ctx, bool immediate)
     if(immediate){
         JAddBoolToObject(req, "sync", true);
     }
+    HAL_UART_Receive_DMA(&huart1, );
+
 
     // Set the target notefile
     // Ideally this would take a sensor parameter from the sister device
@@ -205,145 +217,14 @@ static void addSerialNote(applicationContext * ctx, bool immediate)
     }
 
     // Fill in the body
-    JAddNumberToObject(body, );
+    JAddStringToObject(body, );
 }
 
-
-/**
-  * @brief System Clock Configuration
-  * @retval None
-  * yea, these are boiler-plate that I copied from STM32IDE to figure out how to do this.
-  * I'm not sure how well they'll work in this application
-  */
-void SystemClock_Config(void)
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
-  RCC_OscInitTypeDef RCC_OscInitStruct = {0};
-  RCC_ClkInitTypeDef RCC_ClkInitStruct = {0};
+  /* Prevent unused argument(s) compilation warning */
+  UNUSED(huart);
+  // Add Rx msgs to application context and ding the bell
 
-  /** Configure the main internal regulator output voltage
-  */
-  HAL_PWREx_ControlVoltageScaling(PWR_REGULATOR_VOLTAGE_SCALE1);
-
-  /** Initializes the RCC Oscillators according to the specified parameters
-  * in the RCC_OscInitTypeDef structure.
-  */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
-  RCC_OscInitStruct.HSIState = RCC_HSI_ON;
-  RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
-  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
-  if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
-  {
-    APP_PRINTF("Serial Sensor: Something went wrong configuring the Oscillator.\r\n");
-  }
-
-  /** Initializes the CPU, AHB and APB buses clocks
-  */
-  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_HCLK|RCC_CLOCKTYPE_SYSCLK
-                              |RCC_CLOCKTYPE_PCLK1;
-  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_HSI;
-  RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
-  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV1;
-
-  if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0) != HAL_OK)
-  {
-    APP_PRINTF("Serial Sensor: Something went wrong configuring the clock.\r\n");
-  }
-}
-
-/**
-  * @brief USART2 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_USART2_UART_Init(void)
-{
-
-  /* USER CODE BEGIN USART2_Init 0 */
-
-  /* USER CODE END USART2_Init 0 */
-
-  /* USER CODE BEGIN USART2_Init 1 */
-
-  /* USER CODE END USART2_Init 1 */
-  huart2.Instance = USART2;
-  huart2.Init.BaudRate = 115200;
-  huart2.Init.WordLength = UART_WORDLENGTH_8B;
-  huart2.Init.StopBits = UART_STOPBITS_1;
-  huart2.Init.Parity = UART_PARITY_NONE;
-  huart2.Init.Mode = UART_MODE_TX_RX;
-  huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
-  huart2.Init.OverSampling = UART_OVERSAMPLING_16;
-  huart2.Init.OneBitSampling = UART_ONE_BIT_SAMPLE_DISABLE;
-  huart2.Init.ClockPrescaler = UART_PRESCALER_DIV1;
-  huart2.AdvancedInit.AdvFeatureInit = UART_ADVFEATURE_NO_INIT;
-  if (HAL_UART_Init(&huart2) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_UARTEx_SetTxFifoThreshold(&huart2, UART_TXFIFO_THRESHOLD_1_8) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_UARTEx_SetRxFifoThreshold(&huart2, UART_RXFIFO_THRESHOLD_1_8) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  if (HAL_UARTEx_DisableFifoMode(&huart2) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN USART2_Init 2 */
-
-  /* USER CODE END USART2_Init 2 */
 
 }
-
-/**
-  * @brief GPIO Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_GPIO_Init(void)
-{
-
-  /* GPIO Ports Clock Enable */
-  __HAL_RCC_GPIOD_CLK_ENABLE();
-  __HAL_RCC_GPIOA_CLK_ENABLE();
-
-}
-
-/* USER CODE BEGIN 4 */
-
-/* USER CODE END 4 */
-
-/**
-  * @brief  This function is executed in case of error occurrence.
-  * @retval None
-  */
-void Error_Handler(void)
-{
-  /* USER CODE BEGIN Error_Handler_Debug */
-  /* User can add his own implementation to report the HAL error return state */
-  __disable_irq();
-  while (1)
-  {
-  }
-  /* USER CODE END Error_Handler_Debug */
-}
-
-#ifdef  USE_FULL_ASSERT
-/**
-  * @brief  Reports the name of the source file and the source line number
-  *         where the assert_param error has occurred.
-  * @param  file: pointer to the source file name
-  * @param  line: assert_param error line source number
-  * @retval None
-  */
-void assert_failed(uint8_t *file, uint32_t line)
-{
-  /* USER CODE BEGIN 6 */
-  /* User can add his own implementation to report the file name and line number,
-     ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
-  /* USER CODE END 6 */
-}
-#endif /* USE_FULL_ASSERT */
